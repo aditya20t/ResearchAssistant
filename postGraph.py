@@ -1,39 +1,46 @@
+# postGraph.py
+
 import fitz
 from io import BytesIO
 import requests
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sklearn.feature_extraction.text import TfidfVectorizer
-import streamlit as st
 import numpy as np
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Any
 from openai import OpenAI
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
-
+# Define the state for the graph
 class PostGraphState(TypedDict):
-    arxiv_selected_id: str
-    pdf_chunks: Any 
+    pdf_chunks: Any
     pdf_question: str
     last_answer: str
-    exit_qa: bool
-    loop_count: int
 
-def get_arxiv_pdf(state: PostGraphState) -> PostGraphState:
-    arxiv_id = state.get("arxiv_selected_id", "").strip()
+# --- Standalone Utility Function ---
+# This function is now called directly from Streamlit ONCE per paper.
+# It is NOT a node in the QA graph.
+def process_arxiv_pdf(arxiv_id: str) -> dict:
+    """Downloads, chunks, and vectorizes a PDF from an arXiv ID."""
     if not arxiv_id:
-        return state  # skip if no ID
+        return {}
 
     pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
-    pdf_bytes = requests.get(pdf_url).content
+    try:
+        response = requests.get(pdf_url)
+        response.raise_for_status() # Raise an exception for bad status codes
+        pdf_bytes = response.content
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading PDF: {e}")
+        return {}
+
     pdf_stream = BytesIO(pdf_bytes)
     doc = fitz.open(stream=pdf_stream, filetype="pdf")
 
     full_text = ""
     for page in doc:
         full_text += page.get_text()
+    doc.close()
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     chunks = splitter.split_text(full_text)
@@ -41,81 +48,64 @@ def get_arxiv_pdf(state: PostGraphState) -> PostGraphState:
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(chunks)
 
-    state["pdf_chunks"] = {
+    return {
         "chunks": chunks,
         "vectorizer": vectorizer,
         "tfidf_matrix": tfidf_matrix
     }
-    return state
 
-def qa_loop(state: PostGraphState) -> PostGraphState:
-    st.subheader("Ask questions about the paper")
-    question = st.text_input(
-        "Your question:",
-        key=f"qa_input_{state.get('loop_count', 0)}"
+# --- Graph Node ---
+# This is the only node needed for the QA part.
+def rag_answer(state: PostGraphState) -> PostGraphState:
+    """Finds relevant context and generates an answer using an LLM."""
+    print("Executing RAG answer node...")
+    
+    # Unpack data from state
+    question = state.get("pdf_question", "")
+    pdf_data = state.get("pdf_chunks", {})
+    
+    if not all([question, pdf_data]):
+        state["last_answer"] = "Error: Missing question or PDF data."
+        return state
+
+    vectorizer = pdf_data["vectorizer"]
+    tfidf_matrix = pdf_data["tfidf_matrix"]
+    chunks = pdf_data["chunks"]
+
+    # Find relevant chunks
+    query_vec = vectorizer.transform([question])
+    cosine_similarities = (tfidf_matrix @ query_vec.T).toarray().ravel()
+    top_idx = np.argsort(cosine_similarities)[::-1][:4] # Get top 4 chunks
+    context = "\n\n".join(chunks[i] for i in top_idx)
+
+    # Generate answer with LLM
+    client = OpenAI(
+        base_url="https://router.huggingface.co/v1",
+        api_key=os.getenv("HUGGINGFACE_INFERENCE_KEY"),
     )
-
-    # Exit button always visible
-    exit_pressed = st.button("Exit QA", key=f"exit_qa_{state.get('loop_count', 0)}")
-    state["exit_qa"] = exit_pressed
-
-    # Stop Streamlit here if no input and not exiting
-    if not question and not exit_pressed:
-        st.stop()
-
-    # Only process question if provided
-    if question:
-        vectorizer = state["pdf_chunks"]["vectorizer"]
-        tfidf_matrix = state["pdf_chunks"]["tfidf_matrix"]
-        chunks = state["pdf_chunks"]["chunks"]
-
-        query_vec = vectorizer.transform([question])
-        cosine_similarities = (tfidf_matrix @ query_vec.T).toarray().ravel()
-
-        top_idx = np.argsort(cosine_similarities)[::-1][:4]
-        context = "\n\n".join(chunks[i] for i in top_idx)
-
-        client = OpenAI(
-            base_url="https://router.huggingface.co/v1",
-            api_key=os.getenv("HUGGINGFACE_INFERENCE_KEY"),
-        )
+    
+    try:
         completion = client.chat.completions.create(
-            model="meta-llama/Llama-3.3-70B-Instruct",
+            model="meta-llama/Llama-3.3-70B-Instruct", # Correct model name
             messages=[
-                {"role": "system", "content": "You are a research assistant answering based only on the given paper's content."},
+                {"role": "system", "content": "You are a research assistant. Answer the user's question based ONLY on the provided context from the research paper."},
                 {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
             ],
+            stream=False # For simpler handling
         )
         answer = completion.choices[0].message.content
-        st.write("**Answer:**", answer)
         state["last_answer"] = answer
+    except Exception as e:
+        print(f"Error calling LLM: {e}")
+        state["last_answer"] = f"Sorry, I encountered an error while generating the answer: {e}"
 
-    state['loop_count'] = state.get('loop_count', 0) + 1
     return state
 
-def counter(state: PostGraphState) -> str:
-    """
-    Only exit QA if user pressed Exit button.
-    Otherwise, stay in QA loop.
-    """
-    return 'false' if state.get("exit_qa", False) else 'true'
-
-def build_postgraph() -> StateGraph:
+# --- Graph Builder ---
+def build_postgraph():
+    """Builds the simple, single-step QA graph."""
     graph = StateGraph(PostGraphState)
-
-    graph.add_node('get_arxiv_pdf', get_arxiv_pdf)
-    graph.add_node('qa_loop', qa_loop)
-
-    graph.set_entry_point('get_arxiv_pdf')
-    graph.add_edge('get_arxiv_pdf', 'qa_loop')
-
-    graph.add_conditional_edges(
-        'qa_loop',
-        counter,
-        {
-            'true': 'qa_loop',   # stay in QA
-            'false': END         # exit graph
-        }
-    )
-
+    graph.add_node("rag_answer", rag_answer)
+    graph.set_entry_point("rag_answer")
+    graph.add_edge("rag_answer", END)
     return graph.compile()

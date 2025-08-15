@@ -36,11 +36,8 @@ def search_arxiv(query, max_results=5):
     query_encoded = "+".join(encoded_parts)
 
     url = f"http://export.arxiv.org/api/query?search_query={query_encoded}&start=0&max_results={max_results}"
-    print(f"Searching arXiv with URL: {url}")
 
     response = requests.get(url)
-    print(f"Response status code: {response.status_code}")
-    print(f"Response preview: {response.content[:200]!r}")
 
     # Parse XML
     namespace = {'atom': 'http://www.w3.org/2005/Atom'}
