@@ -54,7 +54,6 @@ narwhals==2.1.1
 networkx==3.4.2
 nibabel==5.3.2
 nipype==1.10.0
-numpy @ file:///croot/numpy_and_numpy_base_1725470312869/work/dist/numpy-2.0.1-cp310-cp310-linux_x86_64.whl#sha256=fdaaeaf4fd89442562da25e51a10ac3bcde58d8c62944d14f5e9856baac7ac07
 openai==1.99.9
 orjson==3.11.2
 ormsgpack==1.10.0
@@ -65,12 +64,10 @@ pillow==11.3.0
 protobuf==6.32.0
 prov==2.1.1
 puremagic==1.30
-pyarrow @ file:///croot/pyarrow_1738229418212/work/python
 pydantic==2.11.7
 pydantic_core==2.33.2
 pydeck==0.9.1
 pydot==4.0.1
-PyMuPDF @ file:///home/conda/feedstock_root/build_artifacts/pymupdf_1715355045128/work
 pyparsing==3.2.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
