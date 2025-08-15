@@ -7,8 +7,8 @@
 ---
 The flow of the project is shown below
 
-<img src="images/1.png" alt="Alt Text" style="width:70%; height:auto;">
-<img src="images/2.png" alt="Alt Text" style="width:70%; height:auto;">
-<img src="images/3.png" alt="Alt Text" style="width:70%; height:auto;">
-<img src="images/4.png" alt="Alt Text" style="width:70%; height:auto;">
-<img src="images/5.png" alt="Alt Text" style="width:70%; height:auto;">
+<img src="static/1.png" alt="Alt Text" style="width:70%; height:auto;">
+<img src="static/2.png" alt="Alt Text" style="width:70%; height:auto;">
+<img src="static/3.png" alt="Alt Text" style="width:70%; height:auto;">
+<img src="static/4.png" alt="Alt Text" style="width:70%; height:auto;">
+<img src="static/5.png" alt="Alt Text" style="width:70%; height:auto;">

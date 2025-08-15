@@ -1,4 +1,4 @@
 .env
 __pycache__
 *.png
-!images/*png
+!static/*png
