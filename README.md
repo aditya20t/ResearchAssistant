@@ -1,6 +1,7 @@
 # Arxiv Research Assistant
 
-You need a HuggingFace inference token to access the project.
+- You need a HuggingFace inference token to access the project.
+- Clone the repository and install all the dependencies mentioned in `requirements.txt`
 
 ---
 The flow of the project is shown below
