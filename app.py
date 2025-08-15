@@ -5,9 +5,9 @@ import os
 from preGraph import build_pregraph, GraphState
 from postGraph import build_postgraph, PostGraphState, process_arxiv_pdf
 
-st.title("Arxiv Search Assistant 📖")
+st.title("Arxiv Research Assistant 📖")
 
-# --- Sidebar for API Key Handling ---
+# --- Sidebar for API Key Handling & Footer ---
 st.sidebar.header("Configuration")
 
 # Check if the key is already in session state or environment variables.
@@ -28,7 +28,8 @@ else:
     api_key = st.sidebar.text_input(
         "Hugging Face Inference Key", 
         type="password", 
-        help="Get your key from the Hugging Face website's settings page."
+        help="Get your key from the Hugging Face website's settings page.",
+        autocomplete="off"
     )
     
     if st.sidebar.button("Submit Key"):
@@ -39,6 +40,39 @@ else:
             st.rerun()
         else:
             st.sidebar.error("Please enter a valid API key.")
+
+# --- Footer in Sidebar ---
+footer = """
+<style>
+/* Link styles */
+.footer a {
+    color: #1a73e8;
+    text-decoration: none;
+    font-weight: bold;
+}
+.footer a:hover {
+    color: #d93025;
+    text-decoration: underline;
+}
+
+/* Footer container in sidebar */
+.footer {
+    margin-top: 20px; /* Add some space above the footer */
+    padding: 10px;
+    text-align: center;
+    font-family: 'Arial', sans-serif;
+    font-size: 14px;
+    color: #5f6368; /* Slightly lighter text color */
+}
+</style>
+
+<div class="footer">
+    <p>Developed with <span style="color:#e25555;">&#10084;</span> by 
+    <a href="https://www.linkedin.com/in/aditya20t/" target="_blank">Aditya Tomar</a></p>
+</div>
+"""
+st.sidebar.markdown(footer, unsafe_allow_html=True)
+
 
 # --- Main App Logic ---
 # The main app will only run if the API key has been provided.
@@ -57,7 +91,7 @@ else:
     if st.session_state.step == 1:
         st.header("1. Find Research Papers")
         with st.form("search_form"):
-            query = st.text_input("Enter research topic")
+            query = st.text_input("Enter research topic", autocomplete='off', placeholder="e.g., rag, machine learning")
             k = st.slider("Number of papers to fetch", 1, 10, 3)
             submitted = st.form_submit_button("Search Papers")
 
@@ -108,7 +142,7 @@ else:
             st.write(f"**Authors:** {', '.join(paper['authors'])}")
             st.write(f"**Published:** {paper['published_date']}")
             st.write(f"**Link:** [Read on arXiv]({paper['link']})")
-            st.write(f"**Summary:** {paper['summary']}")
+            st.write(f"**Abstract:** {paper['summary']}")
 
         # Display chat history
         for message in st.session_state.messages:
