@@ -24,7 +24,7 @@ def user_query(state: GraphState) -> GraphState:
 def build_arxiv_query(state: GraphState) -> GraphState:
     client = OpenAI(
         base_url="https://router.huggingface.co/v1",
-        api_key=os.getenv("HUGGINGFACE_INFERENCE_KEY"),
+        api_key=st.session_state.huggingface_api_key,
     )
 
     completion = client.chat.completions.create(

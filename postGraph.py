@@ -9,7 +9,7 @@ import numpy as np
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Any
 from openai import OpenAI
-import os
+import streamlit as st
 
 # Define the state for the graph
 class PostGraphState(TypedDict):
@@ -81,7 +81,7 @@ def rag_answer(state: PostGraphState) -> PostGraphState:
     # Generate answer with LLM
     client = OpenAI(
         base_url="https://router.huggingface.co/v1",
-        api_key=os.getenv("HUGGINGFACE_INFERENCE_KEY"),
+        api_key=st.session_state.huggingface_api_key,
     )
     
     try:
