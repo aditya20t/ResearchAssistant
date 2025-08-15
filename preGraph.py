@@ -3,11 +3,8 @@ from typing import TypedDict, List, Dict, Any
 from arxiv_search import search_arxiv
 import os
 from openai import OpenAI
-from dotenv import load_dotenv
 import streamlit as st
 import numpy as np
-
-load_dotenv()
 
 class GraphState(TypedDict):
     user_query: str
@@ -22,8 +19,6 @@ class GraphState(TypedDict):
     loop_count: int
 
 def user_query(state: GraphState) -> GraphState:
-    query = "Give me papers related to bias and stereotype which was published in 2023"
-    state['user_query'] = query
     return state
 
 def build_arxiv_query(state: GraphState) -> GraphState:
@@ -84,7 +79,6 @@ def search_on_arxiv(state):
     query = state['arxiv_search_query']
     max_results = state['arxiv_max_results']
     response = search_arxiv(query, max_results)
-    
     # Assuming response is a list of dictionaries with arxiv data
     state['arxiv_response'] = response
     return state

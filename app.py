@@ -1,87 +1,152 @@
+# app.py
+
 import streamlit as st
+import os
 from preGraph import build_pregraph, GraphState
-from postGraph import build_postgraph, PostGraphState
+from postGraph import build_postgraph, PostGraphState, process_arxiv_pdf
 
-st.title("Arxiv Search Assistant")
+st.title("Arxiv Search Assistant 📖")
 
-# -----------------------------
-# Step 1: User inputs for search
-# -----------------------------
-query = st.text_input("Enter research topic:", "bias and stereotype published in 2023")
-k = st.slider("Number of papers to fetch", 1, 10, 3)
+# --- Sidebar for API Key Handling ---
+st.sidebar.header("Configuration")
 
-# Initialize pregraph state once
-if "pregraph_state" not in st.session_state:
-    st.session_state.pregraph_state = None
+# Check if the key is already in session state or environment variables.
+if 'huggingface_api_key' in st.session_state:
+    os.environ['HUGGINGFACE_INFERENCE_KEY'] = st.session_state.huggingface_api_key
+    api_key_provided = True
+elif 'HUGGINGFACE_INFERENCE_KEY' in os.environ:
+    st.session_state.huggingface_api_key = os.environ['HUGGINGFACE_INFERENCE_KEY']
+    api_key_provided = True
+else:
+    api_key_provided = False
 
-if st.button("Search Papers"):
-    pregraph = build_pregraph()
-    initial_state = GraphState(
-        user_query=query,
-        arxiv_search_query="",
-        arxiv_response=[],
-        arxiv_max_results=k,
-        arxiv_selected_id="",  # optional placeholder
-        pdf_chunks=None,
-        pdf_question="",
-        last_answer="",
-        exit_qa=False,
-        loop_count=0
+# Display API key status and input form in the sidebar
+if api_key_provided:
+    st.sidebar.success("✅ API Key is configured.")
+else:
+    st.sidebar.warning("This app requires a Hugging Face Inference API key to function.")
+    api_key = st.sidebar.text_input(
+        "Hugging Face Inference Key", 
+        type="password", 
+        help="Get your key from the Hugging Face website's settings page."
     )
-    # Run pregraph to get arxiv results
-    result_state = pregraph.invoke(initial_state)
-    st.session_state.pregraph_state = result_state
-    st.session_state.papers = result_state["arxiv_response"]
+    
+    if st.sidebar.button("Submit Key"):
+        if api_key:
+            st.session_state.huggingface_api_key = api_key
+            os.environ['HUGGINGFACE_INFERENCE_KEY'] = api_key
+            st.sidebar.success("API Key accepted!")
+            st.rerun()
+        else:
+            st.sidebar.error("Please enter a valid API key.")
 
-# -----------------------------
-# Step 2: Select paper after search
-# -----------------------------
-if "papers" in st.session_state and st.session_state["papers"]:
-    st.subheader("Select one paper to analyze")
-
-    paper_map = {
-        f"{p['title']} ({', '.join(p['authors'])})": p
-        for p in st.session_state["papers"]
-    }
-
-    selected_title = st.radio(
-        "Choose a paper",
-        options=list(paper_map.keys()),
-        key="selected_paper"
-    )
-
-    paper = paper_map[selected_title]
-    with st.expander("View details"):
-        st.write(f"**Authors:** {', '.join(paper['authors'])}")
-        st.write(f"**Published Date:** {paper['published_date']}")
-        st.write(f"**Link:** [Read on arXiv]({paper['link']})")
-        st.write("**Summary:**")
-        st.write(paper["summary"])
-
-    selected_id = paper["arxiv_id"]
-
-    # Initialize postgraph state
-    if "postgraph_state" not in st.session_state:
-        st.session_state.postgraph_state = PostGraphState(
-            arxiv_selected_id=selected_id,
-            pdf_chunks=None,
-            pdf_question="",
-            last_answer="",
-            exit_qa=False,
-            loop_count=0
-        )
-
-    postGraph = build_postgraph()
+# --- Main App Logic ---
+# The main app will only run if the API key has been provided.
+if not api_key_provided:
+    st.info("Please add your Hugging Face API Key in the sidebar to begin.")
+else:
+    # Initialize session state variables for app flow
+    if "step" not in st.session_state:
+        st.session_state.step = 1
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
     # -----------------------------
-    # Step 3: Process paper & QA loop
+    # Step 1: User inputs for search
     # -----------------------------
-    # Run postgraph starting from get_arxiv_pdf
-    result_state = postGraph.invoke(st.session_state.postgraph_state, start="get_arxiv_pdf")
-    st.session_state.postgraph_state = result_state
+    if st.session_state.step == 1:
+        st.header("1. Find Research Papers")
+        with st.form("search_form"):
+            query = st.text_input("Enter research topic")
+            k = st.slider("Number of papers to fetch", 1, 10, 3)
+            submitted = st.form_submit_button("Search Papers")
 
-    # If exit QA pressed
-    if result_state.get("exit_qa"):
-        st.session_state.pop("papers", None)
-        st.session_state.pop("postgraph_state", None)
-        st.experimental_rerun()
+            if submitted:
+                with st.spinner("Finding papers on arXiv..."):
+                    pregraph = build_pregraph()
+                    initial_state = GraphState(user_query=query, arxiv_max_results=k)
+                    result_state = pregraph.invoke(initial_state)
+                    st.session_state.papers = result_state.get("arxiv_response", [])
+                    st.session_state.step = 2
+                    st.rerun()
+
+    # -----------------------------
+    # Step 2: Select a paper
+    # -----------------------------
+    if st.session_state.step == 2 and "papers" in st.session_state:
+        st.header("2. Select a Paper to Analyze")
+        papers = st.session_state.papers
+        if not papers:
+            st.warning("No papers found. Please try a different search query.")
+            st.session_state.step = 1
+            st.rerun()
+
+        paper_map = {f"{p['title']} ({p['authors'][0]} et al.)": p for p in papers}
+        selected_title = st.radio("Choose a paper:", options=list(paper_map.keys()))
+
+        if st.button("Analyze this Paper"):
+            with st.spinner("Processing PDF... This may take a moment."):
+                selected_paper = paper_map[selected_title]
+                st.session_state.selected_paper = selected_paper
+                # Process the PDF *once* and store the chunks in session state
+                pdf_chunks = process_arxiv_pdf(selected_paper["arxiv_id"])
+                if not pdf_chunks:
+                    st.error("Failed to download or process the PDF. Please try another paper.")
+                else:
+                    st.session_state.pdf_chunks = pdf_chunks
+                    st.session_state.step = 3
+                    st.rerun()
+
+    # -----------------------------
+    # Step 3: Chat with the paper
+    # -----------------------------
+    if st.session_state.step == 3:
+        paper = st.session_state.selected_paper
+        st.header(f"3. Ask Questions About: {paper['title']}")
+        
+        with st.expander("Paper Details", expanded=False):
+            st.write(f"**Authors:** {', '.join(paper['authors'])}")
+            st.write(f"**Published:** {paper['published_date']}")
+            st.write(f"**Link:** [Read on arXiv]({paper['link']})")
+            st.write(f"**Summary:** {paper['summary']}")
+
+        # Display chat history
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        # Chat input from user
+        if prompt := st.chat_input("What would you like to know?"):
+            # Add user message to history
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            # Get assistant response
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    postGraph = build_postgraph()
+                    
+                    # Prepare the state for the graph
+                    graph_state = PostGraphState(
+                        pdf_chunks=st.session_state.pdf_chunks,
+                        pdf_question=prompt,
+                        last_answer=""
+                    )
+                    
+                    # Invoke the graph
+                    result_state = postGraph.invoke(graph_state)
+                    answer = result_state.get("last_answer", "Sorry, I couldn't find an answer.")
+                    
+                    st.markdown(answer)
+                    # Add assistant response to history
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+
+        if st.button("Search for a Different Paper"):
+            # Clear session state for QA
+            keys_to_clear = ["papers", "selected_paper", "pdf_chunks", "messages"]
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.session_state.step = 1
+            st.rerun()
