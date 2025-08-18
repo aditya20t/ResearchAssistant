@@ -86,7 +86,7 @@ def rag_answer(state: PostGraphState) -> PostGraphState:
     
     try:
         completion = client.chat.completions.create(
-            model="meta-llama/Llama-3.3-70B-Instruct", # Correct model name
+            model="Qwen/Qwen3-8B", # Correct model name
             messages=[
                 {"role": "system", "content": "You are a research assistant. Answer the user's question based ONLY on the provided context from the research paper."},
                 {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
